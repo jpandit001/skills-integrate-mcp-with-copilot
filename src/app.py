@@ -8,7 +8,9 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import os
+import json
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
@@ -18,6 +20,15 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+# Load teacher credentials
+def load_teachers():
+    teachers_file = Path(__file__).parent / "teachers.json"
+    with open(teachers_file) as f:
+        return json.load(f)
+
+teachers_data = load_teachers()
+teachers_dict = {t["username"]: t["password"] for t in teachers_data["teachers"]}
 
 # In-memory activity database
 activities = {
@@ -88,9 +99,21 @@ def get_activities():
     return activities
 
 
+@app.post("/login")
+def login(username: str, password: str):
+    """Authenticate a teacher"""
+    if username not in teachers_dict or teachers_dict[username] != password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"success": True, "username": username}
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
+def signup_for_activity(activity_name: str, email: str, teacher_username: str = None):
+    """Sign up a student for an activity (requires teacher login)"""
+    # Only teacher can perform signup
+    if teacher_username is None or teacher_username not in teachers_dict:
+        raise HTTPException(status_code=403, detail="Teacher authentication required")
+    
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -99,8 +122,12 @@ def signup_for_activity(activity_name: str, email: str):
     activity = activities[activity_name]
 
     # Validate student is not already signed up
-    if email in activity["participants"]:
-        raise HTTPException(
+    if email in activity["participants"]:, teacher_username: str = None):
+    """Unregister a student from an activity (requires teacher login)"""
+    # Only teacher can perform unregister
+    if teacher_username is None or teacher_username not in teachers_dict:
+        raise HTTPException(status_code=403, detail="Teacher authentication required")
+    
             status_code=400,
             detail="Student is already signed up"
         )
